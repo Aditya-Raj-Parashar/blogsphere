@@ -27,7 +27,7 @@ class Config:
     DB_PASSWORD = ""  # Leave empty for Windows auth
     SECRET_KEY = "your-secret-key-change-this-in-production"
     UPLOAD_FOLDER = 'uploads'
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
+    MAX_CONTENT_LENGTH = 60 * 1024 * 1024  # 60MB
     
     @property
     def connection_string(self):
