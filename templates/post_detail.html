@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}{{ post.title }} - BlogSphere{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card shadow-lg">
+            <div class="card-body">
+                <h1 class="card-title">{{ post.title }}</h1>
+                
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <small class="text-muted">
+                            <i class="fas fa-user me-1"></i>{{ post.author.username }}
+                            <i class="fas fa-clock ms-3 me-1"></i>{{ post.created_at | format_datetime }}
+                        </small>
+                    </div>
+                    <div class="text-muted">
+                         <i class="fas fa-heart me-1"></i>{{ post.like_count }}
+                        <i class="fas fa-comments ms-3 me-1"></i>{{ post.comment_count }}
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <p class="card-text" style="white-space: pre-wrap;">{{ post.content }}</p>
+                </div>
+                
+                <!-- Images -->
+                {% if post.images %}
+                    {% set images = post.images|from_json %}
+                    {% if images %}
+                    <div class="mb-4">
+                        <h5><i class="fas fa-images me-2"></i>Images</h5>
+                        <div class="row g-3">
+                            {% for image in images %}
+                            <div class="col-md-6">
+                                <img src="{{ url_for('uploaded_file', filename=image) }}" 
+                                     class="img-fluid rounded shadow-sm" 
+                                     alt="Post image"
+                                     style="cursor: pointer;"
+                                     onclick="openImageModal(this.src)">
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                {% endif %}
+                
+                <!-- Videos -->
+                {% if post.videos %}
+                    {% set videos = post.videos|from_json %}
+                    {% if videos %}
+                    <div class="mb-4">
+                        <h5><i class="fas fa-video me-2"></i>Videos</h5>
+                        <div class="row g-3">
+                            {% for video in videos %}
+                            <div class="col-md-6">
+                                <video controls class="w-100 rounded shadow-sm">
+                                    <source src="{{ url_for('uploaded_file', filename=video) }}" type="video/mp4">
+                                    Your browser does not support the video tag.
+                                </video>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                {% endif %}
+                
+                <!-- Like Button -->
+                {% if current_user.is_authenticated %}
+                <div class="mb-4">
+                    <form method="POST" action="{{ url_for('like_post', post_id=post.id) }}" style="display: inline;">
+                        <button type="submit" class="btn {{ 'btn-danger' if user_liked else 'btn-outline-danger' }}">
+                            <i class="fas fa-heart me-1"></i>
+                            {{ 'Unlike' if user_liked else 'Like' }} ({{ post.like_count }})
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Comments Section -->
+        <div class="card shadow-lg mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-comments me-2"></i>Comments ({{ comments|length }})
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if current_user.is_authenticated %}
+                <form method="POST" action="{{ url_for('add_comment', post_id=post.id) }}" class="mb-4">
+                    <div class="mb-3">
+                        <label for="content" class="form-label">Add a comment</label>
+                        <textarea class="form-control" id="content" name="content" rows="3" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-comment me-2"></i>Post Comment
+                    </button>
+                </form>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Please <a href="{{ url_for('login') }}">login</a> to post comments.
+                </div>
+                {% endif %}
+                
+                {% if comments %}
+                    {% for comment in comments %}
+                    <div class="comment mb-3 p-3 border rounded">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <strong>{{ comment.author.username }}</strong>
+                                <small class="text-muted ms-2">
+                                    {{ comment.created_at.strftime('%B %d, %Y at %I:%M %p') }}
+                                </small>
+                            </div>
+                        </div>
+                        <p class="mb-0 mt-2" style="white-space: pre-wrap;">{{ comment.content }}</p>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-comments fa-3x text-muted mb-3"></i>
+                        <h6 class="text-muted">No comments yet</h6>
+                        <p class="text-muted">Be the first to comment on this post!</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-user me-2"></i>About the Author
+                </h5>
+            </div>
+            <div class="card-body">
+                <h6>{{ post.author.username }}</h6>
+                <p class="text-muted">Member since {{ post.author.created_at | format_datetime }}</p>
+            </div>
+        </div>
+        
+        <div class="card shadow-sm mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-share me-2"></i>Actions
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('index') }}" class="btn btn-outline-primary">
+                        <i class="fas fa-arrow-left me-2"></i>Back to Posts
+                    </a>
+                    {% if current_user.is_authenticated %}
+                    <a href="{{ url_for('create_post') }}" class="btn btn-success">
+                        <i class="fas fa-pen me-2"></i>Write a Post
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Image Modal -->
+<div class="modal fade" id="imageModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Image Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="modalImage" src="" class="img-fluid" alt="Preview">
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function openImageModal(src) {
+    document.getElementById('modalImage').src = src;
+    new bootstrap.Modal(document.getElementById('imageModal')).show();
+}
+</script>
+{% endblock %}

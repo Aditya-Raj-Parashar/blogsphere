@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Create Post - BlogSphere{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-lg">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-pen me-2"></i>Create New Post
+                </h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">
+                            <i class="fas fa-heading me-1"></i>Title
+                        </label>
+                        <input type="text" class="form-control" id="title" name="title" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="content" class="form-label">
+                            <i class="fas fa-edit me-1"></i>Content
+                        </label>
+                        <textarea class="form-control" id="content" name="content" rows="10" required></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="images" class="form-label">
+                            <i class="fas fa-images me-1"></i>Upload Images
+                        </label>
+                        <input type="file" class="form-control" id="images" name="images" multiple 
+                               accept="image/*">
+                        <div class="form-text">
+                             Supported formats: PNG, JPG, JPEG, GIF (Max 16MB each)
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="videos" class="form-label">
+                            <i class="fas fa-video me-1"></i>Upload Videos
+                        </label>
+                        <input type="file" class="form-control" id="videos" name="videos" multiple 
+                               accept="video/*">
+                        <div class="form-text">
+                            Supported formats: MP4, AVI, MOV, WebM (Max 16MB each)
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times me-2"></i>Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane me-2"></i>Publish Post
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
