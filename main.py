@@ -16,7 +16,7 @@ from werkzeug.utils import secure_filename
 import pyodbc
 from flask_sqlalchemy import SQLAlchemy
 
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql+psycopg2://postgres:skaKczsfSOyKrZKgFKqUcOBnqpdcXWoE@postgres.railway.internal:5432/railway"
+
 
 
 
