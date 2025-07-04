@@ -22,26 +22,41 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 class Config:
-    # PostgreSQL configuration
-    DB_HOST = os.environ.get('DB_HOST', 'postgres.railway.internal')
-    DB_PORT = os.environ.get('DB_PORT', '5432')
+    # PostgreSQL configuration - using your public Railway URL
+    DB_HOST = os.environ.get('DB_HOST', 'tramway.proxy.rlwy.net')
+    DB_PORT = os.environ.get('DB_PORT', '10940')
     DB_NAME = os.environ.get('DB_NAME', 'railway')
     DB_USER = os.environ.get('DB_USER', 'postgres')
     DB_PASSWORD = os.environ.get('DB_PASSWORD', 'skaKczsfSOyKrZKgFKqUcOBnqpdcXWoE')
     
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'secret key')
+    # Alternative: Use DATABASE_URL if provided
+    DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://postgres:skaKczsfSOyKrZKgFKqUcOBnqpdcXWoE@tramway.proxy.rlwy.net:10940/railway')
+    
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')
     UPLOAD_FOLDER = 'uploads'
     MAX_CONTENT_LENGTH = 60 * 1024 * 1024  # 60MB
     
     @property
     def connection_params(self):
-        return {
-            'host': self.DB_HOST,
-            'port': self.DB_PORT,
-            'database': self.DB_NAME,
-            'user': self.DB_USER,
-            'password': self.DB_PASSWORD
-        }
+        # If DATABASE_URL is provided, parse it
+        if self.DATABASE_URL and self.DATABASE_URL.startswith('postgresql://'):
+            import urllib.parse
+            parsed = urllib.parse.urlparse(self.DATABASE_URL)
+            return {
+                'host': parsed.hostname,
+                'port': parsed.port,
+                'database': parsed.path[1:],  # Remove leading slash
+                'user': parsed.username,
+                'password': parsed.password
+            }
+        else:
+            return {
+                'host': self.DB_HOST,
+                'port': self.DB_PORT,
+                'database': self.DB_NAME,
+                'user': self.DB_USER,
+                'password': self.DB_PASSWORD
+            }
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -56,11 +71,20 @@ os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
 # Database connection helper
 def get_db_connection():
     try:
+        # Try to connect using the parsed connection parameters
         conn = psycopg2.connect(**config.connection_params)
         return conn
     except Exception as e:
-        logger.error(f"Database connection failed: {e}")
-        raise
+        # If that fails, try connecting directly with the DATABASE_URL
+        try:
+            conn = psycopg2.connect(config.DATABASE_URL)
+            return conn
+        except Exception as e2:
+            logger.error(f"Database connection failed with both methods:")
+            logger.error(f"Method 1 error: {e}")
+            logger.error(f"Method 2 error: {e2}")
+            logger.error(f"Connection params: {config.connection_params}")
+            raise e
 
 # Simple User class for Flask-Login
 class User(UserMixin):
@@ -316,7 +340,7 @@ def post_detail(post_id):
 
         # Debug: Check what's in the images field
         logger.info(f"Post images field: {post_row[4]}")
-    
+        
         post = {
             'id': post_row[0],
             'user_id': post_row[1],
