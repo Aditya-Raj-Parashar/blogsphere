@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-BlogSphere - PostgreSQL version
-Modified to use PostgreSQL instead of MSSQL
+BlogSphere - Final solution using dynamic table creation
+Completely avoids SQLAlchemy mapping conflicts by using raw SQL and dynamic models
 """
 
 import os
@@ -13,8 +13,12 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import pyodbc
+from flask_sqlalchemy import SQLAlchemy
+
+
+
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -22,26 +26,20 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 class Config:
-    # PostgreSQL configuration
-    DB_HOST = os.environ.get('DB_HOST', 'postgres.railway.internal')
-    DB_PORT = os.environ.get('DB_PORT', '5432')
-    DB_NAME = os.environ.get('DB_NAME', 'railway')
-    DB_USER = os.environ.get('DB_USER', 'postgres')
-    DB_PASSWORD = os.environ.get('DB_PASSWORD', 'skaKczsfSOyKrZKgFKqUcOBnqpdcXWoE')
-    
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'secret key')
+    DB_SERVER = "localhost"
+    DB_NAME = "BlogWebsite"
+    DB_USERNAME = ""  # Leave empty for Windows auth
+    DB_PASSWORD = ""  # Leave empty for Windows auth
+    SECRET_KEY = "secretkey"
     UPLOAD_FOLDER = 'uploads'
     MAX_CONTENT_LENGTH = 60 * 1024 * 1024  # 60MB
     
     @property
-    def connection_params(self):
-        return {
-            'host': self.DB_HOST,
-            'port': self.DB_PORT,
-            'database': self.DB_NAME,
-            'user': self.DB_USER,
-            'password': self.DB_PASSWORD
-        }
+    def connection_string(self):
+        if self.DB_USERNAME and self.DB_PASSWORD:
+            return f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={self.DB_SERVER};DATABASE={self.DB_NAME};UID={self.DB_USERNAME};PWD={self.DB_PASSWORD}"
+        else:
+            return f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={self.DB_SERVER};DATABASE={self.DB_NAME};Trusted_Connection=yes"
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -56,10 +54,10 @@ os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
 # Database connection helper
 def get_db_connection():
     try:
-        conn = psycopg2.connect(**config.connection_params)
-        return conn
+        return pyodbc.connect(config.connection_string)
     except Exception as e:
         logger.error(f"Database connection failed: {e}")
+        logger.error(f"Connection string (without credentials): DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={config.DB_SERVER};DATABASE={config.DB_NAME};...")
         raise
 
 # Simple User class for Flask-Login
@@ -82,7 +80,7 @@ def load_user(user_id):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, username, email, password_hash, is_admin, created_at FROM users WHERE id = %s", (user_id,))
+        cursor.execute("SELECT id, username, email, password_hash, is_admin, created_at FROM Users WHERE id = ?", (user_id,))
         row = cursor.fetchone()
         conn.close()
         
@@ -130,29 +128,29 @@ def allowed_file(filename):
 def get_posts():
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT p.id, p.user_id, p.title, p.content, p.images, p.videos, p.created_at,
                    u.username,
-                   (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-                   (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count
-            FROM posts p 
-            JOIN users u ON p.user_id = u.id 
+                   (SELECT COUNT(*) FROM Likes WHERE post_id = p.id) as like_count,
+                   (SELECT COUNT(*) FROM Comments WHERE post_id = p.id) as comment_count
+            FROM Posts p 
+            JOIN Users u ON p.user_id = u.id 
             ORDER BY p.created_at DESC
         """)
         posts = []
         for row in cursor.fetchall():
             posts.append({
-                'id': row['id'],
-                'user_id': row['user_id'],
-                'title': row['title'],
-                'content': row['content'],
-                'images': row['images'],
-                'videos': row['videos'],
-                'created_at': row['created_at'],
-                'author': {'username': row['username']},
-                'like_count': row['like_count'],
-                'comment_count': row['comment_count']
+                'id': row[0],
+                'user_id': row[1],
+                'title': row[2],
+                'content': row[3],
+                'images': row[4],
+                'videos': row[5],
+                'created_at': row[6],
+                'author': {'username': row[7]},
+                'like_count': row[8],
+                'comment_count': row[9]
             })
         conn.close()
         return posts
@@ -178,14 +176,14 @@ def register():
             cursor = conn.cursor()
             
             # Check if username exists
-            cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+            cursor.execute("SELECT id FROM Users WHERE username = ?", (username,))
             if cursor.fetchone():
                 flash('Username already exists', 'error')
                 conn.close()
                 return redirect(url_for('register'))
             
             # Check if email exists
-            cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
+            cursor.execute("SELECT id FROM Users WHERE email = ?", (email,))
             if cursor.fetchone():
                 flash('Email already exists', 'error')
                 conn.close()
@@ -194,8 +192,8 @@ def register():
             # Create user
             password_hash = generate_password_hash(password)
             cursor.execute("""
-                INSERT INTO users (username, email, password_hash, is_admin, created_at)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO Users (username, email, password_hash, is_admin, created_at)
+                VALUES (?, ?, ?, ?, ?)
             """, (username, email, password_hash, False, datetime.utcnow()))
             
             conn.commit()
@@ -219,7 +217,7 @@ def login():
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT id, username, email, password_hash, is_admin, created_at FROM users WHERE username = %s", (username,))
+            cursor.execute("SELECT id, username, email, password_hash, is_admin, created_at FROM Users WHERE username = ?", (username,))
             row = cursor.fetchone()
             conn.close()
             
@@ -272,8 +270,8 @@ def create_post():
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO posts (user_id, title, content, images, videos, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO Posts (user_id, title, content, images, videos, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
             """, (current_user.id, title, content, 
                   json.dumps(images) if images else None,
                   json.dumps(videos) if videos else None,
@@ -301,12 +299,12 @@ def post_detail(post_id):
         # Get post details
         cursor.execute("""
             SELECT p.id, p.user_id, p.title, p.content, p.images, p.videos, p.created_at,
-                   u.username, u.created_at as author_created_at,
-                   (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-                   (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count
-            FROM posts p 
-            JOIN users u ON p.user_id = u.id 
-            WHERE p.id = %s
+                    u.username, u.created_at as author_created_at,
+                   (SELECT COUNT(*) FROM Likes WHERE post_id = p.id) as like_count,
+                   (SELECT COUNT(*) FROM Comments WHERE post_id = p.id) as comment_count
+            FROM Posts p 
+            JOIN Users u ON p.user_id = u.id 
+            WHERE p.id = ?
         """, (post_id,))
         post_row = cursor.fetchone()
         
@@ -314,9 +312,13 @@ def post_detail(post_id):
             flash('Post not found', 'error')
             return redirect(url_for('index'))
 
+        # Handle datetime field properly
+        created_at = post_row[6]
+
         # Debug: Check what's in the images field
         logger.info(f"Post images field: {post_row[4]}")
-    
+        
+        
         post = {
             'id': post_row[0],
             'user_id': post_row[1],
@@ -333,9 +335,9 @@ def post_detail(post_id):
         # Get comments
         cursor.execute("""
             SELECT c.id, c.user_id, c.content, c.created_at, u.username
-            FROM comments c
-            JOIN users u ON c.user_id = u.id
-            WHERE c.post_id = %s
+            FROM Comments c
+            JOIN Users u ON c.user_id = u.id
+            WHERE c.post_id = ?
             ORDER BY c.created_at ASC
         """, (post_id,))
         comments = []
@@ -366,21 +368,21 @@ def like_post(post_id):
         cursor = conn.cursor()
         
         # Check if already liked
-        cursor.execute("SELECT id FROM likes WHERE user_id = %s AND post_id = %s", (current_user.id, post_id))
+        cursor.execute("SELECT id FROM Likes WHERE user_id = ? AND post_id = ?", (current_user.id, post_id))
         existing_like = cursor.fetchone()
         
         if existing_like:
-            cursor.execute("DELETE FROM likes WHERE user_id = %s AND post_id = %s", (current_user.id, post_id))
+            cursor.execute("DELETE FROM Likes WHERE user_id = ? AND post_id = ?", (current_user.id, post_id))
             liked = False
         else:
-            cursor.execute("INSERT INTO likes (user_id, post_id, created_at) VALUES (%s, %s, %s)", 
+            cursor.execute("INSERT INTO Likes (user_id, post_id, created_at) VALUES (?, ?, ?)", 
                           (current_user.id, post_id, datetime.utcnow()))
             liked = True
         
         conn.commit()
         
         # Get updated like count
-        cursor.execute("SELECT COUNT(*) FROM likes WHERE post_id = %s", (post_id,))
+        cursor.execute("SELECT COUNT(*) FROM Likes WHERE post_id = ?", (post_id,))
         like_count = cursor.fetchone()[0]
         
         conn.close()
@@ -401,8 +403,8 @@ def add_comment(post_id):
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO comments (user_id, post_id, content, created_at)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO Comments (user_id, post_id, content, created_at)
+            VALUES (?, ?, ?, ?)
         """, (current_user.id, post_id, content, datetime.utcnow()))
         conn.commit()
         conn.close()
@@ -427,11 +429,11 @@ def admin_dashboard():
         cursor = conn.cursor()
         
         # Get all users
-        cursor.execute("SELECT id, username, email, is_admin, created_at FROM users")
+        cursor.execute("SELECT id, username, email, is_admin, created_at FROM Users")
         users = cursor.fetchall()
 
         # Get total posts
-        cursor.execute("SELECT COUNT(*) FROM posts")
+        cursor.execute("SELECT COUNT(*) FROM Posts")
         total_posts = cursor.fetchone()[0]
 
         # Get total users
@@ -461,11 +463,11 @@ def admin_delete_post(post_id):
         cursor = conn.cursor()
         
         # First, delete likes related to this post
-        cursor.execute("DELETE FROM likes WHERE post_id = %s", (post_id,))
-        cursor.execute("DELETE FROM comments WHERE post_id = %s", (post_id,))
+        cursor.execute("DELETE FROM Likes WHERE post_id = ?", (post_id,))
+        cursor.execute("DELETE FROM comments WHERE post_id = ?", (post_id,))
         
         # Then, delete the post
-        cursor.execute("DELETE FROM posts WHERE id = %s", (post_id,))
+        cursor.execute("DELETE FROM Posts WHERE id = ?", (post_id,))
         conn.commit()
         conn.close()
         
@@ -485,10 +487,10 @@ def profile():
         cursor = conn.cursor()
         cursor.execute("""
             SELECT p.id, p.title, p.content, p.images, p.videos, p.created_at,
-                   (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-                   (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count
-            FROM posts p 
-            WHERE p.user_id = %s
+                   (SELECT COUNT(*) FROM Likes WHERE post_id = p.id) as like_count,
+                   (SELECT COUNT(*) FROM Comments WHERE post_id = p.id) as comment_count
+            FROM Posts p 
+            WHERE p.user_id = ?
             ORDER BY p.created_at DESC
         """, (current_user.id,))
         posts = []
@@ -505,7 +507,7 @@ def profile():
             })
         conn.close()
 
-        return render_template('profile.html', posts=posts)
+        return render_template('profile.html', posts=posts)  # Ensure posts is an array here
         
     except Exception as e:
         logger.error(f"Profile error: {e}")
@@ -516,83 +518,19 @@ def profile():
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-def create_tables():
-    """Create database tables if they don't exist"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Create users table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(80) UNIQUE NOT NULL,
-                email VARCHAR(120) UNIQUE NOT NULL,
-                password_hash VARCHAR(255) NOT NULL,
-                is_admin BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Create posts table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS posts (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                title VARCHAR(200) NOT NULL,
-                content TEXT NOT NULL,
-                images TEXT,
-                videos TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Create likes table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS likes (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(user_id, post_id)
-            )
-        """)
-        
-        # Create comments table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS comments (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
-                content TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        conn.commit()
-        conn.close()
-        logger.info('Database tables created successfully')
-        
-    except Exception as e:
-        logger.error(f"Table creation error: {e}")
-        raise
-
 def initialize_database():
     """Initialize database and create admin user"""
     try:
-        # Create tables first
-        create_tables()
-        
         conn = get_db_connection()
         cursor = conn.cursor()
         
         # Check if admin user exists
-        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+        cursor.execute("SELECT id FROM Users WHERE username = 'admin'")
         if not cursor.fetchone():
             password_hash = generate_password_hash('admin123')
             cursor.execute("""
-                INSERT INTO users (username, email, password_hash, is_admin, created_at)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO Users (username, email, password_hash, is_admin, created_at)
+                VALUES (?, ?, ?, ?, ?)
             """, ('admin', 'admin@example.com', password_hash, True, datetime.utcnow()))
             conn.commit()
             logger.info('Admin user created: username=admin, password=admin123')
