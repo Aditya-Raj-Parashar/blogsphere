@@ -14,6 +14,11 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, login_
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import pyodbc
+from flask_sqlalchemy import SQLAlchemy
+
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql+psycopg2://postgres:skaKczsfSOyKrZKgFKqUcOBnqpdcXWoE@postgres.railway.internal:5432/railway"
+
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -425,21 +430,21 @@ def admin_dashboard():
         
         # Get all users
         cursor.execute("SELECT id, username, email, is_admin, created_at FROM Users")
-        users = []
-        for row in cursor.fetchall():
-            users.append({
-                'id': row[0],
-                'username': row[1],
-                'email': row[2],
-                'is_admin': row[3],
-                'created_at': row[4]
-            })
-        
-        # Get all posts
-        posts = get_posts()
-        
+        users = cursor.fetchall()
+
+        # Get total posts
+        cursor.execute("SELECT COUNT(*) FROM Posts")
+        total_posts = cursor.fetchone()[0]
+
+        # Get total users
+        total_users = len(users)
+
         conn.close()
-        return render_template('admin_dashboard.html', users=users, posts=posts)
+        stats = {
+            'total_posts': total_posts,
+            'total_users': total_users
+        }
+        return render_template('admin_dashboard.html', users=users, posts=get_posts(), stats=stats)
         
     except Exception as e:
         logger.error(f"Admin dashboard error: {e}")
@@ -452,20 +457,26 @@ def admin_delete_post(post_id):
     if not current_user.is_admin:
         flash('Access denied. Admin privileges required.', 'error')
         return redirect(url_for('index'))
-    
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        
+        # First, delete likes related to this post
+        cursor.execute("DELETE FROM Likes WHERE post_id = ?", (post_id,))
+        cursor.execute("DELETE FROM comments WHERE post_id = ?", (post_id,))
+        
+        # Then, delete the post
         cursor.execute("DELETE FROM Posts WHERE id = ?", (post_id,))
         conn.commit()
         conn.close()
         
         flash('Post deleted successfully!', 'success')
-        
+
     except Exception as e:
         logger.error(f"Delete post error: {e}")
-        flash('Failed to delete post', 'error')
-    
+        flash('Failed to delete post. It may be associated with existing likes.', 'error')
+
     return redirect(url_for('admin_dashboard'))
 
 @app.route('/profile')
@@ -495,8 +506,8 @@ def profile():
                 'comment_count': row[7]
             })
         conn.close()
-        
-        return render_template('profile.html', posts=posts)
+
+        return render_template('profile.html', posts=posts)  # Ensure posts is an array here
         
     except Exception as e:
         logger.error(f"Profile error: {e}")
@@ -535,7 +546,7 @@ if __name__ == '__main__':
     try:
         initialize_database()
         logger.info('Starting BlogSphere application...')
-        app.run(host='127.0.0.1', port=5000, debug=True)
+        app.run(host='0.0.0.0', port=5000, debug=True)
         
     except Exception as e:
         logger.error(f'Failed to start application: {e}')

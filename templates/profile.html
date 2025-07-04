@@ -27,7 +27,7 @@
         <div class="card shadow-sm mt-4">
             <div class="card-header">
                 <h5 class="mb-0">
-                    <i class="fas fa-chart-bar me-2"></i>Statistics
+                    <i class="fas fa-chart-bar me-2"></i> Activity
                 </h5>
             </div>
             <div class="card-body">
@@ -38,14 +38,14 @@
                     </div>
                     <div class="col-4">
                         <h4 class="text-success">
-                            {% set total_likes = posts|sum(attribute='likes')|length %}
+                            {% set total_likes = posts|sum(attribute='like_count') %}
                             {{ total_likes }}
                         </h4>
                         <small class="text-muted">Likes</small>
                     </div>
                     <div class="col-4">
                         <h4 class="text-info">
-                            {% set total_comments = posts|sum(attribute='comments')|length %}
+                            {% set total_comments = posts|sum(attribute='comment_count') %}
                             {{ total_comments }}
                         </h4>
                         <small class="text-muted">Comments</small>
