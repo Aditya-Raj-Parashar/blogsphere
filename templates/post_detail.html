@@ -113,7 +113,7 @@
                             <div>
                                 <strong>{{ comment.author.username }}</strong>
                                 <small class="text-muted ms-2">
-                                    {{ comment.created_at.strftime('%B %d, %Y at %I:%M %p') }}
+                                    {{ comment.created_at| format_datetime }}
                                 </small>
                             </div>
                         </div>

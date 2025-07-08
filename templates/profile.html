@@ -14,7 +14,7 @@
                 <p class="text-muted">{{ current_user.email }}</p>
                 <p class="text-muted">
                     <i class="fas fa-calendar me-1"></i>
-                    Member since {{ current_user.created_at.strftime('%B %Y') }}
+                    Member since {{ current_user.created_at| format_datetime }}
                 </p>
                 {% if current_user.is_admin %}
                 <span class="badge bg-warning">
@@ -78,7 +78,7 @@
                                 </a>
                             </h5>
                             <small class="text-muted">
-                                <i class="fas fa-clock me-1"></i>{{ post.created_at.strftime('%B %d, %Y at %I:%M %p') }}
+                                <i class="fas fa-clock me-1"></i>{{ post.created_at| format_datetime }}
                             </small>
                         </div>
                     </div>

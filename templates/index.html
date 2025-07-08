@@ -20,7 +20,7 @@
                             </h5>
                             <small class="text-muted">
                                 <i class="fas fa-user me-1"></i>{{ post.author.username }}
-                                <i class="fas fa-clock ms-3 me-1"></i>{{ post.created_at.strftime('%B %d, %Y at %I:%M %p') }}
+                                <i class="fas fa-clock ms-3 me-1"></i>{{ post.created_at| format_datetime }}
                             </small>
                         </div>
                     </div>

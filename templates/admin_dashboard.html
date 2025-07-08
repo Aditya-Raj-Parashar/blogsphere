@@ -106,7 +106,7 @@
                                     </a>
                                 </td>
                                 <td>{{ post.author.username }}</td>
-                                <td>{{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>{{ post.created_at| format_datetime }}</td>
                                 <td>{{ post.like_count }}</td>
                                 <td>{{ post.comment_count }}</td>
                                 <td>
@@ -175,7 +175,7 @@
                                     <span class="badge bg-secondary">User</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                                <td>{{ user.created_at| format_datetime }}</td>
                                 <td>{{ user.posts|length }}</td>
                             </tr>
                             {% endfor %}

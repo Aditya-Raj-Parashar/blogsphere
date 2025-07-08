@@ -1,7 +1,8 @@
+
 #!/usr/bin/env python3
 """
-BlogSphere - Final solution using dynamic table creation
-Completely avoids SQLAlchemy mapping conflicts by using raw SQL and dynamic models
+BlogSphere - Local JSON file storage version
+Uses JSON files in the data folder instead of database
 """
 
 import os
@@ -13,12 +14,6 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-import pyodbc
-from flask_sqlalchemy import SQLAlchemy
-
-
-
-
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -26,20 +21,10 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 class Config:
-    DB_SERVER = "localhost"
-    DB_NAME = "BlogWebsite"
-    DB_USERNAME = ""  # Leave empty for Windows auth
-    DB_PASSWORD = ""  # Leave empty for Windows auth
+    DATA_FOLDER = 'data'
     SECRET_KEY = "secretkey"
     UPLOAD_FOLDER = 'uploads'
-    MAX_CONTENT_LENGTH = 1000 * 1024 * 1024  # 60MB
-    
-    @property
-    def connection_string(self):
-        if self.DB_USERNAME and self.DB_PASSWORD:
-            return f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={self.DB_SERVER};DATABASE={self.DB_NAME};UID={self.DB_USERNAME};PWD={self.DB_PASSWORD}"
-        else:
-            return f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={self.DB_SERVER};DATABASE={self.DB_NAME};Trusted_Connection=yes"
+    MAX_CONTENT_LENGTH = 60 * 1024 * 1024  # 60MB
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -48,17 +33,39 @@ app.secret_key = config.SECRET_KEY
 app.config['UPLOAD_FOLDER'] = config.UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
 
-# Create uploads directory
+# Create data and uploads directories
+os.makedirs(config.DATA_FOLDER, exist_ok=True)
 os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
 
-# Database connection helper
-def get_db_connection():
+# File storage helper functions
+def load_json_file(filename):
+    """Load data from JSON file"""
+    file_path = os.path.join(config.DATA_FOLDER, filename)
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, Exception) as e:
+            logger.error(f"Error loading {filename}: {e}")
+            return []
+    return []
+
+def save_json_file(filename, data):
+    """Save data to JSON file"""
+    file_path = os.path.join(config.DATA_FOLDER, filename)
     try:
-        return pyodbc.connect(config.connection_string)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, default=str)
+        return True
     except Exception as e:
-        logger.error(f"Database connection failed: {e}")
-        logger.error(f"Connection string (without credentials): DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={config.DB_SERVER};DATABASE={config.DB_NAME};...")
-        raise
+        logger.error(f"Error saving {filename}: {e}")
+        return False
+
+def get_next_id(data_list):
+    """Get the next available ID"""
+    if not data_list:
+        return 1
+    return max(item.get('id', 0) for item in data_list) + 1
 
 # Simple User class for Flask-Login
 class User(UserMixin):
@@ -78,14 +85,18 @@ login_manager.login_view = 'login'
 @login_manager.user_loader
 def load_user(user_id):
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, username, email, password_hash, is_admin, created_at FROM Users WHERE id = ?", (user_id,))
-        row = cursor.fetchone()
-        conn.close()
+        users = load_json_file('Users.json')
+        user_data = next((u for u in users if u['id'] == int(user_id)), None)
         
-        if row:
-            return User(row[0], row[1], row[2], row[3], row[4], row[5])
+        if user_data:
+            return User(
+                user_data['id'], 
+                user_data['username'], 
+                user_data['email'], 
+                user_data['password_hash'], 
+                user_data.get('is_admin', False),
+                user_data.get('created_at')
+            )
         return None
     except Exception as e:
         logger.error(f"Error loading user: {e}")
@@ -96,7 +107,9 @@ def load_user(user_id):
 def from_json_filter(value):
     if value:
         try:
-            return json.loads(value)
+            if isinstance(value, str):
+                return json.loads(value)
+            return value
         except:
             return []
     return []
@@ -110,7 +123,7 @@ def format_datetime(value):
             if isinstance(value, str):
                 # Try to parse datetime string
                 dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-                return dt.strftime('%B %d, %Y at %I:%M %p')
+                return dt.strftime('%B %d, %Y at %I:%M %p') 
             elif hasattr(value, 'strftime'):
                 # It's already a datetime object
                 return value.strftime('%B %d, %Y at %I:%M %p')
@@ -127,33 +140,41 @@ def allowed_file(filename):
 
 def get_posts():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT p.id, p.user_id, p.title, p.content, p.images, p.videos, p.created_at,
-                   u.username,
-                   (SELECT COUNT(*) FROM Likes WHERE post_id = p.id) as like_count,
-                   (SELECT COUNT(*) FROM Comments WHERE post_id = p.id) as comment_count
-            FROM Posts p 
-            JOIN Users u ON p.user_id = u.id 
-            ORDER BY p.created_at DESC
-        """)
-        posts = []
-        for row in cursor.fetchall():
-            posts.append({
-                'id': row[0],
-                'user_id': row[1],
-                'title': row[2],
-                'content': row[3],
-                'images': row[4],
-                'videos': row[5],
-                'created_at': row[6],
-                'author': {'username': row[7]},
-                'like_count': row[8],
-                'comment_count': row[9]
-            })
-        conn.close()
-        return posts
+        posts = load_json_file('Posts.json')
+        users = load_json_file('Users.json')
+        likes = load_json_file('likes.json')
+        comments = load_json_file('Comments.json')
+        
+        # Create user lookup
+        user_lookup = {u['id']: u for u in users}
+        
+        # Add additional data to posts
+        enriched_posts = []
+        for post in posts:
+            # Get author info
+            author = user_lookup.get(post['user_id'], {})
+            
+            # Count likes and comments
+            like_count = len([l for l in likes if l['post_id'] == post['id']])
+            comment_count = len([c for c in comments if c['post_id'] == post['id']])
+            
+            enriched_post = {
+                'id': post['id'],
+                'user_id': post['user_id'],
+                'title': post['title'],
+                'content': post['content'],
+                'images': post.get('images'),
+                'videos': post.get('videos'),
+                'created_at': post['created_at'],
+                'author': {'username': author.get('username', 'Unknown')},
+                'like_count': like_count,
+                'comment_count': comment_count
+            }
+            enriched_posts.append(enriched_post)
+        
+        # Sort by created_at (newest first)
+        enriched_posts.sort(key=lambda x: x['created_at'], reverse=True)
+        return enriched_posts
     except Exception as e:
         logger.error(f"Error getting posts: {e}")
         return []
@@ -172,32 +193,31 @@ def register():
         password = request.form['password']
         
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            users = load_json_file('Users.json')
             
             # Check if username exists
-            cursor.execute("SELECT id FROM Users WHERE username = ?", (username,))
-            if cursor.fetchone():
+            if any(u['username'] == username for u in users):
                 flash('Username already exists', 'error')
-                conn.close()
                 return redirect(url_for('register'))
             
             # Check if email exists
-            cursor.execute("SELECT id FROM Users WHERE email = ?", (email,))
-            if cursor.fetchone():
+            if any(u['email'] == email for u in users):
                 flash('Email already exists', 'error')
-                conn.close()
                 return redirect(url_for('register'))
             
             # Create user
             password_hash = generate_password_hash(password)
-            cursor.execute("""
-                INSERT INTO Users (username, email, password_hash, is_admin, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (username, email, password_hash, False, datetime.utcnow()))
+            new_user = {
+                'id': get_next_id(users),
+                'username': username,
+                'email': email,
+                'password_hash': password_hash,
+                'is_admin': False,
+                'created_at': datetime.utcnow().isoformat()
+            }
             
-            conn.commit()
-            conn.close()
+            users.append(new_user)
+            save_json_file('Users.json', users)
             
             flash('Registration successful! Please login.', 'success')
             return redirect(url_for('login'))
@@ -215,14 +235,18 @@ def login():
         password = request.form['password']
         
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, username, email, password_hash, is_admin, created_at FROM Users WHERE username = ?", (username,))
-            row = cursor.fetchone()
-            conn.close()
+            users = load_json_file('Users.json')
+            user_data = next((u for u in users if u['username'] == username), None)
             
-            if row and check_password_hash(row[3], password):
-                user = User(row[0], row[1], row[2], row[3], row[4], row[5])
+            if user_data and check_password_hash(user_data['password_hash'], password):
+                user = User(
+                    user_data['id'], 
+                    user_data['username'], 
+                    user_data['email'], 
+                    user_data['password_hash'], 
+                    user_data.get('is_admin', False),
+                    user_data.get('created_at')
+                )
                 login_user(user)
                 next_page = request.args.get('next')
                 return redirect(next_page) if next_page else redirect(url_for('index'))
@@ -267,17 +291,19 @@ def create_post():
                     videos.append(filename)
         
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO Posts (user_id, title, content, images, videos, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (current_user.id, title, content, 
-                  json.dumps(images) if images else None,
-                  json.dumps(videos) if videos else None,
-                  datetime.utcnow()))
-            conn.commit()
-            conn.close()
+            posts = load_json_file('Posts.json')
+            new_post = {
+                'id': get_next_id(posts),
+                'user_id': current_user.id,
+                'title': title,
+                'content': content,
+                'images': images if images else None,
+                'videos': videos if videos else None,
+                'created_at': datetime.utcnow().isoformat()
+            }
+            
+            posts.append(new_post)
+            save_json_file('Posts.json', posts)
             
             flash('Post created successfully!', 'success')
             return redirect(url_for('index'))
@@ -291,67 +317,57 @@ def create_post():
 @app.route('/post/<int:post_id>')
 def post_detail(post_id):
     try:
-        logger.info(f"Loading post detail for post_id: {post_id}")
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        logger.info("Database connection established")
+        posts = load_json_file('Posts.json')
+        users = load_json_file('Users.json')
+        likes = load_json_file('likes.json')
+        comments = load_json_file('Comments.json')
         
-        # Get post details
-        cursor.execute("""
-            SELECT p.id, p.user_id, p.title, p.content, p.images, p.videos, p.created_at,
-                    u.username, u.created_at as author_created_at,
-                   (SELECT COUNT(*) FROM Likes WHERE post_id = p.id) as like_count,
-                   (SELECT COUNT(*) FROM Comments WHERE post_id = p.id) as comment_count
-            FROM Posts p 
-            JOIN Users u ON p.user_id = u.id 
-            WHERE p.id = ?
-        """, (post_id,))
-        post_row = cursor.fetchone()
-        
-        if not post_row:
+        # Find the post
+        post_data = next((p for p in posts if p['id'] == post_id), None)
+        if not post_data:
             flash('Post not found', 'error')
             return redirect(url_for('index'))
-
-        # Handle datetime field properly
-        created_at = post_row[6]
-
-        # Debug: Check what's in the images field
-        logger.info(f"Post images field: {post_row[4]}")
         
+        # Get author info
+        author = next((u for u in users if u['id'] == post_data['user_id']), {})
+        
+        # Count likes and comments
+        like_count = len([l for l in likes if l['post_id'] == post_id])
+        comment_count = len([c for c in comments if c['post_id'] == post_id])
         
         post = {
-            'id': post_row[0],
-            'user_id': post_row[1],
-            'title': post_row[2],
-            'content': post_row[3],
-            'images': post_row[4],
-            'videos': post_row[5],
-            'created_at': post_row[6],
-            'author': {'username': post_row[7], 'created_at': post_row[8]},
-            'like_count': post_row[9],
-            'comment_count': post_row[10]
+            'id': post_data['id'],
+            'user_id': post_data['user_id'],
+            'title': post_data['title'],
+            'content': post_data['content'],
+            'images': post_data.get('images'),
+            'videos': post_data.get('videos'),
+            'created_at': post_data['created_at'],
+            'author': {
+                'username': author.get('username', 'Unknown'),
+                'created_at': author.get('created_at')
+            },
+            'like_count': like_count,
+            'comment_count': comment_count
         }
         
-        # Get comments
-        cursor.execute("""
-            SELECT c.id, c.user_id, c.content, c.created_at, u.username
-            FROM Comments c
-            JOIN Users u ON c.user_id = u.id
-            WHERE c.post_id = ?
-            ORDER BY c.created_at ASC
-        """, (post_id,))
-        comments = []
-        for row in cursor.fetchall():
-            comments.append({
-                'id': row[0],
-                'user_id': row[1],
-                'content': row[2],
-                'created_at': row[3],
-                'author': {'username': row[4]}
-            })
+        # Get comments with author info
+        post_comments = []
+        for comment in comments:
+            if comment['post_id'] == post_id:
+                comment_author = next((u for u in users if u['id'] == comment['user_id']), {})
+                post_comments.append({
+                    'id': comment['id'],
+                    'user_id': comment['user_id'],
+                    'content': comment['content'],
+                    'created_at': comment['created_at'],
+                    'author': {'username': comment_author.get('username', 'Unknown')}
+                })
         
-        conn.close()
-        return render_template('post_detail.html', post=post, comments=comments)
+        # Sort comments by created_at
+        post_comments.sort(key=lambda x: x['created_at'])
+        
+        return render_template('post_detail.html', post=post, comments=post_comments)
         
     except Exception as e:
         logger.error(f"Post detail error: {e}")
@@ -364,28 +380,25 @@ def post_detail(post_id):
 @login_required
 def like_post(post_id):
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        likes = load_json_file('likes.json')
         
         # Check if already liked
-        cursor.execute("SELECT id FROM Likes WHERE user_id = ? AND post_id = ?", (current_user.id, post_id))
-        existing_like = cursor.fetchone()
+        existing_like = next((l for l in likes if l['user_id'] == current_user.id and l['post_id'] == post_id), None)
         
         if existing_like:
-            cursor.execute("DELETE FROM Likes WHERE user_id = ? AND post_id = ?", (current_user.id, post_id))
-            liked = False
+            # Remove like
+            likes = [l for l in likes if not (l['user_id'] == current_user.id and l['post_id'] == post_id)]
         else:
-            cursor.execute("INSERT INTO Likes (user_id, post_id, created_at) VALUES (?, ?, ?)", 
-                          (current_user.id, post_id, datetime.utcnow()))
-            liked = True
+            # Add like
+            new_like = {
+                'id': get_next_id(likes),
+                'user_id': current_user.id,
+                'post_id': post_id,
+                'created_at': datetime.utcnow().isoformat()
+            }
+            likes.append(new_like)
         
-        conn.commit()
-        
-        # Get updated like count
-        cursor.execute("SELECT COUNT(*) FROM Likes WHERE post_id = ?", (post_id,))
-        like_count = cursor.fetchone()[0]
-        
-        conn.close()
+        save_json_file('likes.json', likes)
         
         # Redirect back to the post detail page
         return redirect(url_for('post_detail', post_id=post_id))
@@ -400,14 +413,17 @@ def add_comment(post_id):
     content = request.form['content']
     
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO Comments (user_id, post_id, content, created_at)
-            VALUES (?, ?, ?, ?)
-        """, (current_user.id, post_id, content, datetime.utcnow()))
-        conn.commit()
-        conn.close()
+        comments = load_json_file('Comments.json')
+        new_comment = {
+            'id': get_next_id(comments),
+            'user_id': current_user.id,
+            'post_id': post_id,
+            'content': content,
+            'created_at': datetime.utcnow().isoformat()
+        }
+        
+        comments.append(new_comment)
+        save_json_file('Comments.json', comments)
         
         flash('Comment added successfully!', 'success')
         
@@ -425,25 +441,14 @@ def admin_dashboard():
         return redirect(url_for('index'))
     
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        users = load_json_file('Users.json')
+        posts = load_json_file('Posts.json')
         
-        # Get all users
-        cursor.execute("SELECT id, username, email, is_admin, created_at FROM Users")
-        users = cursor.fetchall()
-
-        # Get total posts
-        cursor.execute("SELECT COUNT(*) FROM Posts")
-        total_posts = cursor.fetchone()[0]
-
-        # Get total users
-        total_users = len(users)
-
-        conn.close()
         stats = {
-            'total_posts': total_posts,
-            'total_users': total_users
+            'total_posts': len(posts),
+            'total_users': len(users)
         }
+        
         return render_template('admin_dashboard.html', users=users, posts=get_posts(), stats=stats)
         
     except Exception as e:
@@ -459,23 +464,26 @@ def admin_delete_post(post_id):
         return redirect(url_for('index'))
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        # Delete likes related to this post
+        likes = load_json_file('likes.json')
+        likes = [l for l in likes if l['post_id'] != post_id]
+        save_json_file('likes.json', likes)
         
-        # First, delete likes related to this post
-        cursor.execute("DELETE FROM Likes WHERE post_id = ?", (post_id,))
-        cursor.execute("DELETE FROM comments WHERE post_id = ?", (post_id,))
+        # Delete comments related to this post
+        comments = load_json_file('Comments.json')
+        comments = [c for c in comments if c['post_id'] != post_id]
+        save_json_file('Comments.json', comments)
         
-        # Then, delete the post
-        cursor.execute("DELETE FROM Posts WHERE id = ?", (post_id,))
-        conn.commit()
-        conn.close()
+        # Delete the post
+        posts = load_json_file('Posts.json')
+        posts = [p for p in posts if p['id'] != post_id]
+        save_json_file('Posts.json', posts)
         
         flash('Post deleted successfully!', 'success')
 
     except Exception as e:
         logger.error(f"Delete post error: {e}")
-        flash('Failed to delete post. It may be associated with existing likes.', 'error')
+        flash('Failed to delete post.', 'error')
 
     return redirect(url_for('admin_dashboard'))
 
@@ -483,31 +491,32 @@ def admin_delete_post(post_id):
 @login_required
 def profile():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT p.id, p.title, p.content, p.images, p.videos, p.created_at,
-                   (SELECT COUNT(*) FROM Likes WHERE post_id = p.id) as like_count,
-                   (SELECT COUNT(*) FROM Comments WHERE post_id = p.id) as comment_count
-            FROM Posts p 
-            WHERE p.user_id = ?
-            ORDER BY p.created_at DESC
-        """, (current_user.id,))
-        posts = []
-        for row in cursor.fetchall():
-            posts.append({
-                'id': row[0],
-                'title': row[1],
-                'content': row[2],
-                'images': row[3],
-                'videos': row[4],
-                'created_at': row[5],
-                'like_count': row[6],
-                'comment_count': row[7]
-            })
-        conn.close()
+        posts = load_json_file('Posts.json')
+        likes = load_json_file('likes.json')
+        comments = load_json_file('Comments.json')
+        
+        # Filter posts by current user
+        user_posts = []
+        for post in posts:
+            if post['user_id'] == current_user.id:
+                like_count = len([l for l in likes if l['post_id'] == post['id']])
+                comment_count = len([c for c in comments if c['post_id'] == post['id']])
+                
+                user_posts.append({
+                    'id': post['id'],
+                    'title': post['title'],
+                    'content': post['content'],
+                    'images': post.get('images'),
+                    'videos': post.get('videos'),
+                    'created_at': post['created_at'],
+                    'like_count': like_count,
+                    'comment_count': comment_count
+                })
+        
+        # Sort by created_at (newest first)
+        user_posts.sort(key=lambda x: x['created_at'], reverse=True)
 
-        return render_template('profile.html', posts=posts)  # Ensure posts is an array here
+        return render_template('profile.html', posts=user_posts)
         
     except Exception as e:
         logger.error(f"Profile error: {e}")
@@ -518,35 +527,42 @@ def profile():
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-def initialize_database():
-    """Initialize database and create admin user"""
+def initialize_data():
+    """Initialize data files and create admin user"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        # Initialize empty files if they don't exist
+        for filename in ['Users.json', 'Posts.json', 'Comments.json', 'likes.json']:
+            file_path = os.path.join(config.DATA_FOLDER, filename)
+            if not os.path.exists(file_path):
+                save_json_file(filename, [])
         
         # Check if admin user exists
-        cursor.execute("SELECT id FROM Users WHERE username = 'admin'")
-        if not cursor.fetchone():
+        users = load_json_file('Users.json')
+        if not any(u['username'] == 'admin' for u in users):
             password_hash = generate_password_hash('admin123')
-            cursor.execute("""
-                INSERT INTO Users (username, email, password_hash, is_admin, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, ('admin', 'admin@example.com', password_hash, True, datetime.utcnow()))
-            conn.commit()
+            admin_user = {
+                'id': get_next_id(users),
+                'username': 'admin',
+                'email': 'admin@example.com',
+                'password_hash': password_hash,
+                'is_admin': True,
+                'created_at': datetime.utcnow().isoformat()
+            }
+            users.append(admin_user)
+            save_json_file('Users.json', users)
             logger.info('Admin user created: username=admin, password=admin123')
         
-        conn.close()
-        logger.info('Database initialized successfully')
+        logger.info('Data files initialized successfully')
         
     except Exception as e:
-        logger.error(f"Database initialization error: {e}")
+        logger.error(f"Data initialization error: {e}")
         raise
 
 if __name__ == '__main__':
     try:
-        initialize_database()
+        initialize_data()
         logger.info('Starting BlogSphere application...')
-        app.run(host='0.0.0.0', port=5001, debug=True)
+        app.run(host='0.0.0.0', port=5000, debug=True)
         
     except Exception as e:
         logger.error(f'Failed to start application: {e}')

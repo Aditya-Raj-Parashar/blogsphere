@@ -146,7 +146,25 @@ img, video {
 footer {
     background: var(--gradient-primary);
     color: white;
+    margin-top: auto;
 }
+
+/* Ensure body and html take full height */
+html, body {
+    height: 100%;
+}
+
+/* Make the main container a flex container */
+body {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Make main content grow to fill available space */
+main {
+    flex: 1;
+}
+
 
 /* Loading states */
 .btn:disabled {
