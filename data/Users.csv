@@ -1,3 +1,0 @@
-id,username,email,password_hash,is_admin,created_at
-1,admin,admin@blog.com,pbkdf2:sha256:600000$x7z0qdUKWlMCnb81$59a119bb960770d2d483a8c144b144ed6ff8325b4b6fbb27d48571f554a68faf,False,2025-07-03 22:28:51.583
-2,Aditya Raj Singh,aditya@blog.com,pbkdf2:sha256:600000$H1hzPAm45dN3sHOs$1f5aa5c3f69bfd84dc5929b23021f0b78a7516a678f8461ae530129a3f0b03fd,True,2025-07-03 17:07:58.410

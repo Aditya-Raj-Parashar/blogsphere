@@ -32,7 +32,7 @@ class Config:
     DB_PASSWORD = ""  # Leave empty for Windows auth
     SECRET_KEY = "secretkey"
     UPLOAD_FOLDER = 'uploads'
-    MAX_CONTENT_LENGTH = 60 * 1024 * 1024  # 60MB
+    MAX_CONTENT_LENGTH = 1000 * 1024 * 1024  # 60MB
     
     @property
     def connection_string(self):
@@ -546,7 +546,7 @@ if __name__ == '__main__':
     try:
         initialize_database()
         logger.info('Starting BlogSphere application...')
-        app.run(host='0.0.0.0', port=5000, debug=True)
+        app.run(host='0.0.0.0', port=5001, debug=True)
         
     except Exception as e:
         logger.error(f'Failed to start application: {e}')
