@@ -6,6 +6,7 @@ Uses JSON files in the data folder instead of database
 """
 
 import os
+import re
 import sys
 import json
 import logging
@@ -101,6 +102,22 @@ def load_user(user_id):
     except Exception as e:
         logger.error(f"Error loading user: {e}")
         return None
+
+@app.template_filter('autolink')
+def autolink(text):
+    # Step 1: Replace newline characters with <br>
+    text = text.replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>')
+
+    # Step 2: Replace URLs with clickable links (with optional custom text)
+    pattern = r'((?:https?://|http://|www\.)[^\s<]+)(?:\s+__([^_]+)__)?'
+
+    def replace(match):
+        url = match.group(1)
+        display_text = match.group(2) if match.group(2) else url
+        href = url if url.startswith('http') else f'https://{url}'  # Add https for www.
+        return f'<a href="{href}" target="_blank" rel="noopener noreferrer">{display_text}</a>'
+
+    return re.sub(pattern, replace, text)
 
 # Template filter for JSON
 @app.template_filter('from_json')

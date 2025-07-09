@@ -1,7 +1,7 @@
 [
   {
     "id": 1,
-    "username": "admin",
+    "username": "adiint",
     "email": "admin@example.com",
     "password_hash": "pbkdf2:sha256:600000$nkua8x08pZb3KLrO$205f15089f6ea7b95752651473f298f6cf6abd6e3680a602174e623a6931f59d",
     "is_admin": true,

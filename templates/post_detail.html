@@ -23,9 +23,8 @@
                 </div>
                 
                 <div class="mb-4">
-                    <p class="card-text" style="white-space: pre-wrap;">{{ post.content }}</p>
-                </div>
-                
+                    <p class="card-text" style="white-space: pre-wrap;"><div>{{ post.content | autolink | safe }}</div></p>
+                </div>          
                 <!-- Images -->
                 {% if post.images %}
                     {% set images = post.images|from_json %}

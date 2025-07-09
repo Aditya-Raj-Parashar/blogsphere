@@ -127,4 +127,60 @@
         {% endif %}
     </div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchFilter = document.getElementById('navSearchFilter');
+    const clearButton = document.getElementById('clearSearch');
+    const searchResults = document.getElementById('searchResults');
+    const resultCount = document.getElementById('resultCount');
+    const postCards = document.querySelectorAll('.post-card');
+
+    function performSearch() {
+        const searchTerm = searchFilter.value.toLowerCase().trim();
+        let visibleCount = 0;
+
+        if (searchTerm === '') {
+            // Show all posts when search is empty
+            postCards.forEach(function(card) {
+                card.style.display = 'block';
+            });
+            if (searchResults) {
+                searchResults.style.display = 'none';
+            }
+        } else {
+            // Filter posts based on search term
+            postCards.forEach(function(card) {
+                const title = card.querySelector('.card-title a').textContent.toLowerCase();
+                const content = card.querySelector('.card-text').textContent.toLowerCase();
+                const author = card.querySelector('.text-muted').textContent.toLowerCase();
+
+                if (title.includes(searchTerm) || content.includes(searchTerm) || author.includes(searchTerm)) {
+                    card.style.display = 'block';
+                    visibleCount++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            // Update result count and show search results info
+            if (resultCount && searchResults) {
+                resultCount.textContent = visibleCount;
+                searchResults.style.display = 'block';
+            }
+        }
+    }
+
+    if (searchFilter) {
+        searchFilter.addEventListener('input', performSearch);
+        
+        // Clear search functionality
+        if (clearButton) {
+            clearButton.addEventListener('click', function() {
+                searchFilter.value = '';
+                performSearch();
+            });
+        }
+    }
+});
+</script>
 {% endblock %}
