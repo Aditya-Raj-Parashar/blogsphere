@@ -24,7 +24,7 @@ class Config:
     DATA_FOLDER = 'data'
     SECRET_KEY = "secretkey"
     UPLOAD_FOLDER = 'uploads'
-    MAX_CONTENT_LENGTH = 60 * 1024 * 1024  # 60MB
+    MAX_CONTENT_LENGTH = 100 * 1024 * 1024  # 60MB
 
 # Initialize Flask app
 app = Flask(__name__)
