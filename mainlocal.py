@@ -81,7 +81,7 @@ class User(UserMixin):
 # Login manager setup
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'login'
+login_manager.login_view = 'login' #type: ignore
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -152,7 +152,7 @@ def format_datetime(value):
 
 # Helper functions
 def allowed_file(filename):
-    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'avi', 'mov', 'wmv'}
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'avi', 'mov', 'wmv', 'pdf', 'doc', 'docx', 'txt', 'ppt', 'pptx', 'xls', 'xlsx', 'sql', 'zip'}
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def get_posts():
@@ -292,6 +292,7 @@ def create_post():
         
         images = []
         videos = []
+        documents = []
         
         if 'images' in request.files:
             for file in request.files.getlist('images'):
@@ -307,6 +308,14 @@ def create_post():
                     file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                     videos.append(filename)
         
+        # Handle document uploads
+        if 'documents' in request.files:
+            for file in request.files.getlist('documents'):
+                if file and file.filename and allowed_file(file.filename):
+                    filename = secure_filename(file.filename)
+                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                    documents.append(filename)
+        
         try:
             posts = load_json_file('Posts.json')
             new_post = {
@@ -316,6 +325,7 @@ def create_post():
                 'content': content,
                 'images': images if images else None,
                 'videos': videos if videos else None,
+                'documents': documents if documents else None,
                 'created_at': datetime.utcnow().isoformat()
             }
             
@@ -359,6 +369,7 @@ def post_detail(post_id):
             'content': post_data['content'],
             'images': post_data.get('images'),
             'videos': post_data.get('videos'),
+            'documents': post_data.get('documents'),
             'created_at': post_data['created_at'],
             'author': {
                 'username': author.get('username', 'Unknown'),
@@ -456,18 +467,40 @@ def admin_dashboard():
     if not current_user.is_admin:
         flash('Access denied. Admin privileges required.', 'error')
         return redirect(url_for('index'))
-    
     try:
         users = load_json_file('Users.json')
         posts = load_json_file('Posts.json')
-        
+        comments = load_json_file('Comments.json')
+        likes = load_json_file('likes.json')
+        # Prepare user and post lookups
+        user_lookup = {u['id']: u for u in users}
+        post_lookup = {p['id']: p for p in posts}
+        # Enrich comments
+        enriched_comments = []
+        for c in comments:
+            enriched_comments.append({
+                'id': c['id'],
+                'user': user_lookup.get(c['user_id'], {'username': 'Unknown'}),
+                'post': post_lookup.get(c['post_id'], {'title': 'Unknown'}),
+                'content': c['content'],
+                'created_at': c['created_at']
+            })
+        # Enrich likes
+        enriched_likes = []
+        for l in likes:
+            enriched_likes.append({
+                'id': l['id'],
+                'user': user_lookup.get(l['user_id'], {'username': 'Unknown'}),
+                'post': post_lookup.get(l['post_id'], {'title': 'Unknown'}),
+                'created_at': l['created_at']
+            })
         stats = {
             'total_posts': len(posts),
-            'total_users': len(users)
+            'total_users': len(users),
+            'total_comments': len(comments),
+            'total_likes': len(likes)
         }
-        
-        return render_template('admin_dashboard.html', users=users, posts=get_posts(), stats=stats)
-        
+        return render_template('admin_dashboard.html', users=users, posts=get_posts(), stats=stats, comments=enriched_comments, likes=enriched_likes)
     except Exception as e:
         logger.error(f"Admin dashboard error: {e}")
         flash('Error loading admin dashboard', 'error')
@@ -543,6 +576,74 @@ def profile():
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+@app.route('/admin/comments')
+@login_required
+def admin_comments():
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('index'))
+    comments = load_json_file('Comments.json')
+    users = load_json_file('Users.json')
+    posts = load_json_file('Posts.json')
+    user_lookup = {u['id']: u for u in users}
+    post_lookup = {p['id']: p for p in posts}
+    # Enrich comments
+    enriched_comments = []
+    for c in comments:
+        enriched_comments.append({
+            'id': c['id'],
+            'user': user_lookup.get(c['user_id'], {'username': 'Unknown'}),
+            'post': post_lookup.get(c['post_id'], {'title': 'Unknown'}),
+            'content': c['content'],
+            'created_at': c['created_at']
+        })
+    return render_template('admin_comments.html', comments=enriched_comments)
+
+@app.route('/admin/delete_comment/<int:comment_id>', methods=['POST'])
+@login_required
+def admin_delete_comment(comment_id):
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('index'))
+    comments = load_json_file('Comments.json')
+    comments = [c for c in comments if c['id'] != comment_id]
+    save_json_file('Comments.json', comments)
+    flash('Comment deleted successfully!', 'success')
+    return redirect(url_for('admin_comments'))
+
+@app.route('/admin/likes')
+@login_required
+def admin_likes():
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('index'))
+    likes = load_json_file('likes.json')
+    users = load_json_file('Users.json')
+    posts = load_json_file('Posts.json')
+    user_lookup = {u['id']: u for u in users}
+    post_lookup = {p['id']: p for p in posts}
+    enriched_likes = []
+    for l in likes:
+        enriched_likes.append({
+            'id': l['id'],
+            'user': user_lookup.get(l['user_id'], {'username': 'Unknown'}),
+            'post': post_lookup.get(l['post_id'], {'title': 'Unknown'}),
+            'created_at': l['created_at']
+        })
+    return render_template('admin_likes.html', likes=enriched_likes)
+
+@app.route('/admin/delete_like/<int:like_id>', methods=['POST'])
+@login_required
+def admin_delete_like(like_id):
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('index'))
+    likes = load_json_file('likes.json')
+    likes = [l for l in likes if l['id'] != like_id]
+    save_json_file('likes.json', likes)
+    flash('Like removed successfully!', 'success')
+    return redirect(url_for('admin_likes'))
 
 def initialize_data():
     """Initialize data files and create admin user"""

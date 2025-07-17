@@ -12,7 +12,7 @@
         <!-- Statistics Cards -->
         <div class="row mb-4">
             <div class="col-md-3">
-                <div class="card bg-primary text-white">
+                <div class="card bg-primary text-white dashboard-card" onclick="showSection('posts-section')" style="cursor:pointer;">
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
@@ -27,7 +27,7 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card bg-success text-white">
+                <div class="card bg-success text-white dashboard-card" onclick="showSection('users-section')" style="cursor:pointer;">
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
@@ -42,7 +42,7 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card bg-info text-white">
+                <div class="card bg-info text-white dashboard-card" onclick="showSection('comments-section')" style="cursor:pointer;">
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
@@ -57,7 +57,7 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card bg-warning text-white">
+                <div class="card bg-warning text-white dashboard-card" onclick="showSection('likes-section')" style="cursor:pointer;">
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
@@ -74,7 +74,7 @@
         </div>
         
         <!-- Posts Management -->
-        <div class="card shadow-lg">
+        <div class="card shadow-lg" id="posts-section">
             <div class="card-header">
                 <h5 class="mb-0">
                     <i class="fas fa-newspaper me-2"></i>Posts Management
@@ -137,7 +137,7 @@
         </div>
         
         <!-- Users Management -->
-        <div class="card shadow-lg mt-4">
+        <div class="card shadow-lg mt-4" id="users-section">
             <div class="card-header">
                 <h5 class="mb-0">
                     <i class="fas fa-users me-2"></i>Users Management
@@ -190,43 +190,122 @@
                 {% endif %}
             </div>
         </div>
-    </div>
-</div>
 
-<!-- Delete Confirmation Modal -->
-<div class="modal fade" id="deleteModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="fas fa-exclamation-triangle me-2"></i>Confirm Delete
+        <!-- Comments Management -->
+        <div class="card shadow-lg mt-4" id="comments-section">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-comments me-2"></i>Comments Management
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <p>Are you sure you want to delete the post "<span id="postTitle"></span>"?</p>
-                <p class="text-danger">
-                    <i class="fas fa-warning me-1"></i>
-                    This action cannot be undone.
-                </p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <form id="deleteForm" method="POST" style="display: inline;">
-                    <button type="submit" class="btn btn-danger">
-                        <i class="fas fa-trash me-2"></i>Delete Post
-                    </button>
-                </form>
+            <div class="card-body">
+                {% if comments %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>User</th>
+                                <th>Post</th>
+                                <th>Content</th>
+                                <th>Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for comment in comments %}
+                            <tr>
+                                <td>{{ comment.id }}</td>
+                                <td>{{ comment.user.username }}</td>
+                                <td>{{ comment.post.title }}</td>
+                                <td>{{ comment.content }}</td>
+                                <td>{{ comment.created_at | format_datetime }}</td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('admin_delete_comment', comment_id=comment.id) }}" style="display:inline;">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this comment?');">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-comments fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No comments found</h5>
+                </div>
+                {% endif %}
             </div>
         </div>
-    </div>
-</div>
+
+        <!-- Likes Management -->
+        <div class="card shadow-lg mt-4" id="likes-section">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-heart me-2"></i>Likes Management
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if likes %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>User</th>
+                                <th>Post</th>
+                                <th>Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for like in likes %}
+                            <tr>
+                                <td>{{ like.id }}</td>
+                                <td>{{ like.user.username }}</td>
+                                <td>{{ like.post.title }}</td>
+                                <td>{{ like.created_at | format_datetime }}</td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('admin_delete_like', like_id=like.id) }}" style="display:inline;">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this like?');">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-heart fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No likes found</h5>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="text-center my-4">
+            <button class="btn btn-secondary" onclick="showSection('all')">
+                <i class="fas fa-th-large me-2"></i>Show All Sections
+            </button>
+        </div>
 
 <script>
-function confirmDelete(postId, postTitle) {
-    document.getElementById('postTitle').textContent = postTitle;
-    document.getElementById('deleteForm').action = `/admin/delete_post/${postId}`;
-    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+function showSection(sectionId) {
+    const sections = ['posts-section', 'users-section', 'comments-section', 'likes-section'];
+    for (const id of sections) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.style.display = (sectionId === 'all' || sectionId === id) ? '' : 'none';
+        }
+    }
 }
+// By default, show only posts section
+showSection('posts-section'); //in production replace it with 'all'
 </script>
 {% endblock %}
