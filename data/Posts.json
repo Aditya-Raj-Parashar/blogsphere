@@ -20,5 +20,17 @@
       "Recording 2025-07-07 180550.mp4"
     ],
     "created_at": "2025-07-09T05:58:24.922482"
+  },
+  {
+    "id": 3,
+    "user_id": 3,
+    "title": "Assingment 1 - by Aditya Raj Singh",
+    "content": "Here is the file for assingment 1",
+    "images": null,
+    "videos": null,
+    "documents": [
+      "assingment1.zip"
+    ],
+    "created_at": "2025-07-17T16:25:04.468533"
   }
 ]
