@@ -142,24 +142,55 @@ document.addEventListener('DOMContentLoaded', function() {
         observer.observe(card);
     });
 
-    // Search functionality (if search input exists)
+    // Search functionality (for both main search and navbar search)
     var searchInput = document.getElementById('search');
-    if (searchInput) {
-        searchInput.addEventListener('input', function() {
-            var searchTerm = this.value.toLowerCase();
-            var posts = document.querySelectorAll('.post-card');
+    var navSearchInput = document.getElementById('navSearchFilter');
+    
+    function performSearchFilter(searchTerm) {
+        var posts = document.querySelectorAll('.post-card, .card');
+        var visibleCount = 0;
+        
+        posts.forEach(function(post) {
+            var titleElement = post.querySelector('.card-title, h5');
+            var contentElement = post.querySelector('.card-text, .card-body');
             
-            posts.forEach(function(post) {
-                var title = post.querySelector('.card-title').textContent.toLowerCase();
-                var content = post.querySelector('.card-text').textContent.toLowerCase();
+            if (titleElement && contentElement) {
+                var title = titleElement.textContent.toLowerCase();
+                var content = contentElement.textContent.toLowerCase();
                 
                 if (title.includes(searchTerm) || content.includes(searchTerm)) {
                     post.style.display = 'block';
+                    visibleCount++;
                 } else {
                     post.style.display = 'none';
                 }
-            });
+            }
         });
+        
+        return visibleCount;
+    }
+    
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            var searchTerm = this.value.toLowerCase();
+            performSearchFilter(searchTerm);
+        });
+    }
+    
+    if (navSearchInput) {
+        navSearchInput.addEventListener('input', function() {
+            var searchTerm = this.value.toLowerCase();
+            performSearchFilter(searchTerm);
+        });
+        
+        // Clear search button
+        var clearButton = document.getElementById('clearSearch');
+        if (clearButton) {
+            clearButton.addEventListener('click', function() {
+                navSearchInput.value = '';
+                performSearchFilter('');
+            });
+        }
     }
 
     // Back to top button
