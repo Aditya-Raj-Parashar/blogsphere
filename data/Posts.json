@@ -32,5 +32,17 @@
       "assingment1.zip"
     ],
     "created_at": "2025-07-17T16:25:04.468533"
+  },
+  {
+    "id": 4,
+    "user_id": 3,
+    "title": "Case Study 1 -- by Aditya Raj Singh",
+    "content": "here is the case study 1 of sql intellipat\r\n\r\n\r\n\r\n\r\n\r\n check my github also - https://github.com/Aditya-Raj-Parashar __github link__",
+    "images": null,
+    "videos": null,
+    "documents": [
+      "CASE_STUDY_1-_aditya_raj_singh.zip"
+    ],
+    "created_at": "2025-07-18T09:51:40.270238"
   }
 ]
